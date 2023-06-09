@@ -149,7 +149,7 @@ def DecodeDomainName(reader: BytesIO):
     return b".".join(parts)
 
 
-# why does returning bytes (results) mess iwth the linter?
+# why does returning bytes (results) mess with the linter(pylance)?
 def DecodeCompressedDomain(length: int, reader: BytesIO):
     pointer_bytes = bytes([length & 63]) + reader.read(1)
     pointer = struct.unpack("!H", pointer_bytes)[0]
