@@ -47,8 +47,6 @@ ROOT_SERVERS = {
 UDPSock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 # UDPSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-pp = pprint.PrettyPrinter(indent=4)
-
 @dataclass
 class UDPHeader:
     id: int
@@ -116,10 +114,6 @@ def EncodeDomainName(domain: str) -> bytes:
     for _, part in enumerate(parts):
         encoding += bytes([len(part)]) + part.encode()
     return encoding + b"\x00"
-
-        # parts[index] = str(len(part)) + part
-    # parts.append("\x0")
-    # encoding = "".join(parts)
 
 def DecodeDomainName(reader: BytesIO) -> bytes:
     parts = []
@@ -236,7 +230,6 @@ def ResolveDNS(domain: str, type_: int):
             name_server_ip = ip
             name_server = GetNameServer(response)
         elif ns_domain := GetNameServer(response):
-            # name_server = ns_domain
             return ResolveDNS(ns_domain, TYPE_A)
         else:
             raise Exception("Unable to find IP address")
@@ -246,7 +239,6 @@ if __name__ == "__main__":
     auth_server = input("Enter Authoritative Server: \n")
     ip = ResolveDNS(domain, 1)
     print(ip)
-    # pp.pprint(ip.answers)
 
 # what nameserver do we ask -> where does it send us -> 
 # todo: add support for parsing ipv6
