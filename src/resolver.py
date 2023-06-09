@@ -4,7 +4,6 @@ from io import BytesIO
 import struct
 from dataclasses import dataclass
 from typing import List
-import pprint
 
 # DNS can send and recieve "n" number of packets
 # That's why we need to declare a buffer size
@@ -12,40 +11,59 @@ import pprint
 ServerAddressPort = ("8.8.8.8", 53)
 BufferSize: int = 1024
 
-# it's the internet and here's for the other type values:
-# https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
+MaxCompressionOffset    = 2 << 13 # We have 14 bits for the compression pointer
+MaxDomainNameWireOctets = 255
+MaxCompressionPointers = (MaxDomainNameWireOctets+1)/2 - 2
+
+# it's the internet and here's for the other class values:
+# https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.4
 CLASS_IN = 1
-TYPE_A = 1
-TYPE_NS = 2
+
+# reponse types for dns. you can find the obsolete or experimental 
+# ones here:
+# https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
+TYPES = {
+    "A": 1, #a host address
+    "NS": 2, #an authoritative name server
+    "CNAME": 5, #the canonical name for an alias
+    "SOA": 6, #marks the start of a zone of authority
+    "WKS": 11, #a well known service description
+    "PTR": 12, #a domain name pointer
+    "HINFO": 13, #host information
+    "MINFO": 14, #mailbox or mail list information
+    "MX": 15, #mail exchange
+    "TXT": 16 #text strings
+}
 
 
 # There are 13 Authoritative Nameservers (a-m).
-# This is where we start making requests and then they point us 
+# This is where we start making requests and then they point us
 # left or right. see: https://www.iana.org/domains/root/servers
 ROOT_SERVERS = {
-    "a.root-servers.net": "198.41.0.4", # Verisign, Inc.
-    "b.root-servers.net": "199.9.14.201", # USC Information Sciences Institute
-    "c.root-servers.net": "192.33.4.12", # Cogent Communications
-    "d.root-servers.net": "199.7.91.13", # UMD
-    "e.root-servers.net": "192.203.230.10", # NASA (AMES Research Center)
-    "f.root-servers.net": "192.5.5.241", # Internet Systems Consortium
-    "g.root-servers.net": "192.112.36.4", # US Department of Defense
-    "h.root-servers.net": "198.97.190.53", # US Army (Research Lab)
-    "i.root-servers.net": "192.36.148.17", # Netnod
-    "j.root-servers.net": "192.58.128.30", # Verisign, Inc.
-    "k.root-servers.net": "193.0.14.129", # RIPE NCC
-    "l.root-servers.net": "199.7.83.42", # ICANN
-    "m.root-servers.net": "202.12.27.33", # WIDE Project
+    "a.root-servers.net": "198.41.0.4",  # Verisign, Inc.
+    "b.root-servers.net": "199.9.14.201",  # USC Information Sciences Institute
+    "c.root-servers.net": "192.33.4.12",  # Cogent Communications
+    "d.root-servers.net": "199.7.91.13",  # UMD
+    "e.root-servers.net": "192.203.230.10",  # NASA (AMES Research Center)
+    "f.root-servers.net": "192.5.5.241",  # Internet Systems Consortium
+    "g.root-servers.net": "192.112.36.4",  # US Department of Defense
+    "h.root-servers.net": "198.97.190.53",  # US Army (Research Lab)
+    "i.root-servers.net": "192.36.148.17",  # Netnod
+    "j.root-servers.net": "192.58.128.30",  # Verisign, Inc.
+    "k.root-servers.net": "193.0.14.129",  # RIPE NCC
+    "l.root-servers.net": "199.7.83.42",  # ICANN
+    "m.root-servers.net": "202.12.27.33",  # WIDE Project
 }
 
-# We can connect and bind. We would typically bind 
-# if we wanted to be on the receiving end of UDP requests 
+# We can connect and bind. We would typically bind
+# if we wanted to be on the receiving end of UDP requests
 # and connect when we want to connect to a remote UDP server.
 # setsockopt allows us to reuse the server after a shutdown.
 # SOCK_DGRAM signifies UDP and AF_INET let's the computer know we're
 # sending the packets over the internet.
 UDPSock = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 # UDPSock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
 
 @dataclass
 class UDPHeader:
@@ -57,14 +75,15 @@ class UDPHeader:
     NSCOUNT: int = 0
     ARCOUNT: int = 0
 
-    # the ! let's python know we want the order of bytes in 
-    # big endian (which is the goto with network packets) as 
+    # the ! let's python know we want the order of bytes in
+    # big endian (which is the goto with network packets) as
     # opposed to little endian.
     # Q: should self not have a type?
     def get_bytes(self) -> bytes:
         header = dataclasses.astuple(self)
-        header = struct.pack('!HHHHHH', *header)
+        header = struct.pack("!HHHHHH", *header)
         return header
+
 
 @dataclass
 class UDPQuestion:
@@ -76,6 +95,7 @@ class UDPQuestion:
         question = self.name + struct.pack("!HH", self.type_, self.class_)
         return question
 
+
 @dataclass
 class DNSResponse:
     name: bytes
@@ -83,6 +103,7 @@ class DNSResponse:
     class_: int
     ttl: int
     data: bytes
+
 
 class DNSPacket:
     header: UDPHeader
@@ -107,15 +128,17 @@ class DNSPacket:
 
         return header, questions, answers, authorities, additionals
 
+
 def EncodeDomainName(domain: str) -> bytes:
     encoding = b""
-    parts = domain.split('.')
+    parts = domain.split(".")
 
     for _, part in enumerate(parts):
         encoding += bytes([len(part)]) + part.encode()
     return encoding + b"\x00"
 
-def DecodeDomainName(reader: BytesIO) -> bytes:
+
+def DecodeDomainName(reader: BytesIO):
     parts = []
     while (length := reader.read(1)[0]) != 0:
         if length & 192:
@@ -123,17 +146,21 @@ def DecodeDomainName(reader: BytesIO) -> bytes:
             break
         else:
             parts.append(reader.read(length))
-    return b'.'.join(parts)
+    return b".".join(parts)
 
-def DecodeCompressedDomain(length: int, reader: BytesIO) -> bytes:
+
+# why does returning bytes (results) mess iwth the linter?
+def DecodeCompressedDomain(length: int, reader: BytesIO):
     pointer_bytes = bytes([length & 63]) + reader.read(1)
     pointer = struct.unpack("!H", pointer_bytes)[0]
     current_pos = reader.tell()
     reader.seek(pointer)
     result = DecodeDomainName(reader)
     reader.seek(current_pos)
+
     return result
- 
+
+
 def MakeDNSQuery(domain: str, type_: str):
     name = EncodeDomainName(domain)
     id = random.randint(0, 65535)
@@ -143,10 +170,12 @@ def MakeDNSQuery(domain: str, type_: str):
     question = UDPQuestion(name, type_, CLASS_IN)
     return header.get_bytes() + question.get_bytes()
 
+
 # unmarshall dns reponse
 def ParseResponse(reader) -> UDPHeader:
     items = struct.unpack("!HHHHHH", reader.read(12))
     return UDPHeader(*items)
+
 
 def ParseQuestion(reader) -> UDPQuestion:
     name = DecodeDomainName(reader)
@@ -154,16 +183,19 @@ def ParseQuestion(reader) -> UDPQuestion:
     type_, class_ = struct.unpack("!HH", data)
     return UDPQuestion(name, type_, class_)
 
+
 def ParseRecord(reader) -> DNSResponse:
     name = DecodeDomainName(reader)
     data = reader.read(10)
     type_, class_, ttl, data_len = struct.unpack("!HHIH", data)
 
-    if type_ == TYPE_NS:
+    if type_ == TYPES["NS"]:
         data = DecodeDomainName(reader)
-    elif type_ == TYPE_A:
+    elif type_ == TYPES["A"]:
         data = IPToString(reader.read(data_len))
-    else: 
+    elif type_ == TYPES["CNAME"]:
+        data = DecodeDomainName(reader)
+    else:
         data = reader.read(data_len)
 
     return DNSResponse(name, type_, class_, ttl, data)
@@ -173,11 +205,11 @@ def LookupDNS(domain: str, type_: int) -> str:
     # if starts with www. remove
     query = MakeDNSQuery(domain, type_)
 
-    # the send method is typically used for TCP (which requires 
-    # handshakes from clients to server) while sendto will need 
-    # you to specify an intended udp server. You should 
+    # the send method is typically used for TCP (which requires
+    # handshakes from clients to server) while sendto will need
+    # you to specify an intended udp server. You should
     # be able to do this without needing to connect to the server.
-    # Q: You know what's odd? You can't call socket.recvfrom (more info) after 
+    # Q: You know what's odd? You can't call socket.recvfrom (more info) after
     # calling .recv (less info) is this because it has already been read?
     UDPSock.sendto(query, ServerAddressPort)
     data, _ = UDPSock.recvfrom(BufferSize)
@@ -187,8 +219,10 @@ def LookupDNS(domain: str, type_: int) -> str:
 
     return IPToString(response.answers[0].data)
 
+
 def IPToString(IP: bytes) -> str:
     return ".".join([str(x) for x in IP])
+
 
 def ADNSLookup(ip: str, domain: str, type_: int) -> DNSPacket:
     query = MakeDNSQuery(domain, type_)
@@ -201,45 +235,53 @@ def ADNSLookup(ip: str, domain: str, type_: int) -> DNSPacket:
     return response
 
 
-def GetNameServer(packet: DNSPacket) -> str:
+def GetNameServer(packet: DNSPacket):
     for x in packet.authorities:
-        if x.type_ == TYPE_NS:
-            return x.data.decode('utf-8')
-        
-def GetAnswer(packet: DNSPacket) -> bytes:
+        if x.type_ == TYPES["NS"]:
+            return x.data.decode("utf-8")
+
+def GetAnswer(packet: DNSPacket):
     for x in packet.answers:
-        if x.type_ == TYPE_A:
+        if x.type_ == TYPES["A"]:
             return x.data
-        
+
 def GetNameServerIP(packet):
     for x in packet.additionals:
-        if x.type_ == TYPE_A:
+        if x.type_ == TYPES["A"]:
             return x.data
-        
+
+
 def ResolveDNS(domain: str, type_: int):
     name_server, name_server_ip = random.choice(list(ROOT_SERVERS.items()))
 
     while True:
         print(f"Querying {name_server} ({name_server_ip}) for {domain}")
         response = ADNSLookup(name_server_ip, domain, type_)
+        x = [x.type_ for x in response.answers]
 
         if ip := GetAnswer(response):
-            print("fin", ip)
+            print("fin", response.answers)
             return ip
         elif ip := GetNameServerIP(response):
             name_server_ip = ip
             name_server = GetNameServer(response)
         elif ns_domain := GetNameServer(response):
-            return ResolveDNS(ns_domain, TYPE_A)
+            return ResolveDNS(ns_domain, type_)
+        elif x[0] == TYPES["CNAME"]:
+            for y in response.answers: 
+                name_server = y.data.decode('utf-8')
+            return ResolveDNS(name_server, type_)
+
         else:
             raise Exception("Unable to find IP address")
 
+
 if __name__ == "__main__":
     domain = input("Enter domain name: \n")
-    auth_server = input("Enter Authoritative Server: \n")
+    # type_ = input("Enter Type: \n")
     ip = ResolveDNS(domain, 1)
     print(ip)
 
-# what nameserver do we ask -> where does it send us -> 
+# what nameserver do we ask -> where does it send us ->
 # todo: add support for parsing ipv6
 # todo: add tables
