@@ -261,7 +261,8 @@ def ResolveDNS(domain: str, type_: int):
 
         if ip := GetAnswer(response):
             print("fin", response.answers)
-            return ip
+            # return ip
+            return ip, response.answers
         elif ip := GetNameServerIP(response):
             name_server_ip = ip
             name_server = GetNameServer(response)
@@ -278,9 +279,14 @@ def ResolveDNS(domain: str, type_: int):
 
 if __name__ == "__main__":
     domain = input("Enter domain name: \n")
-    # type_ = input("Enter Type: \n")
-    ip = ResolveDNS(domain, 1)
-    print(ip)
+    type_ = input("Enter Type: \n")
+
+    if TYPES[type_]:
+        ip, _ = ResolveDNS(domain, TYPES[type_])
+        print(ip)
+    else:
+        ip, _ = ResolveDNS(domain, 1)
+        print(ip)
 
 # what nameserver do we ask -> where does it send us ->
 # todo: add support for parsing ipv6
