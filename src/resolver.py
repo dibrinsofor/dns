@@ -11,28 +11,28 @@ from typing import List
 ServerAddressPort = ("8.8.8.8", 53)
 BufferSize: int = 1024
 
-MaxCompressionOffset    = 2 << 13 # We have 14 bits for the compression pointer
+MaxCompressionOffset = 2 << 13  # We have 14 bits for the compression pointer
 MaxDomainNameWireOctets = 255
-MaxCompressionPointers = (MaxDomainNameWireOctets+1)/2 - 2
+MaxCompressionPointers = (MaxDomainNameWireOctets + 1) / 2 - 2
 
 # it's the internet and here's for the other class values:
 # https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.4
 CLASS_IN = 1
 
-# reponse types for dns. you can find the obsolete or experimental 
+# reponse types for dns. you can find the obsolete or experimental
 # ones here:
 # https://datatracker.ietf.org/doc/html/rfc1035#section-3.2.2
 TYPES = {
-    "A": 1, #a host address
-    "NS": 2, #an authoritative name server
-    "CNAME": 5, #the canonical name for an alias
-    "SOA": 6, #marks the start of a zone of authority
-    "WKS": 11, #a well known service description
-    "PTR": 12, #a domain name pointer
-    "HINFO": 13, #host information
-    "MINFO": 14, #mailbox or mail list information
-    "MX": 15, #mail exchange
-    "TXT": 16 #text strings
+    "A": 1,  # a host address
+    "NS": 2,  # an authoritative name server
+    "CNAME": 5,  # the canonical name for an alias
+    "SOA": 6,  # marks the start of a zone of authority
+    "WKS": 11,  # a well known service description
+    "PTR": 12,  # a domain name pointer
+    "HINFO": 13,  # host information
+    "MINFO": 14,  # mailbox or mail list information
+    "MX": 15,  # mail exchange
+    "TXT": 16,  # text strings
 }
 
 
@@ -240,10 +240,12 @@ def GetNameServer(packet: DNSPacket):
         if x.type_ == TYPES["NS"]:
             return x.data.decode("utf-8")
 
+
 def GetAnswer(packet: DNSPacket):
     for x in packet.answers:
         if x.type_ == TYPES["A"]:
             return x.data
+
 
 def GetNameServerIP(packet):
     for x in packet.additionals:
@@ -251,27 +253,32 @@ def GetNameServerIP(packet):
             return x.data
 
 
-def ResolveDNS(domain: str, type_: int):
+def ResolveDNS(domain: str, type_: int, queries=None):
     name_server, name_server_ip = random.choice(list(ROOT_SERVERS.items()))
+    
+    if queries is None:
+        queries = []
 
     while True:
-        print(f"Querying {name_server} ({name_server_ip}) for {domain}")
+        query = [name_server, name_server_ip, domain]
+        print(query)
+        queries.append(query)
+        # print(f"Querying {name_server} ({name_server_ip}) for {domain}")
         response = ADNSLookup(name_server_ip, domain, type_)
         x = [x.type_ for x in response.answers]
 
-        if ip := GetAnswer(response):
+        if ip := GetAnswer(response):  # returns ip
             print("fin", response.answers)
-            # return ip
-            return ip, response.answers
+            return queries, response.answers, ip
         elif ip := GetNameServerIP(response):
             name_server_ip = ip
             name_server = GetNameServer(response)
         elif ns_domain := GetNameServer(response):
-            return ResolveDNS(ns_domain, type_)
+            return ResolveDNS(ns_domain, type_, queries)
         elif x[0] == TYPES["CNAME"]:
-            for y in response.answers: 
-                name_server = y.data.decode('utf-8')
-            return ResolveDNS(name_server, type_)
+            for y in response.answers:
+                name_server = y.data.decode("utf-8")
+            return ResolveDNS(name_server, type_, queries)
 
         else:
             raise Exception("Unable to find IP address")
